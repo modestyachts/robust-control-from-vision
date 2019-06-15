@@ -40,4 +40,3 @@ def lqr_parameters(q, ndims=2):
     Q = scipy.linalg.block_diag(*[Q1]*ndims)
     R = scipy.linalg.block_diag(*[R1]*ndims)
     return Q, R
-    

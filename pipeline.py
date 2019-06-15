@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn import linear_model
 
 import synthesis as synth
 
@@ -13,7 +12,8 @@ smallfont = 18
 matplotlib.rcParams['text.usetex'] = True
 plt.rc('font', family='serif')
 plt.rc('font', serif='Times')
-plt.rc('font', size=smallfont)
+plt.rc('axes', labelsize=smallfont)
+plt.rc('legend', fontsize=smallfont)
 
 
 ## Generate synthetic image data
@@ -119,6 +119,21 @@ def get_quartiles(arr):
             np.quantile(arr, 0.75, axis=0))
 
 
+def compute_trajectory_cost(xs, us, Q, R, norm):    
+    if norm.upper() == 'H2':
+        norm = 2
+        mult = 1 / len(xs)
+    elif norm.upper() == 'L1':
+        norm = np.inf
+        mult = 1
+    else:
+        raise NotImplementedError('norm not supported')
+    # xs, us are (N, state/input dim)
+    us = np.vstack((us, np.zeros(us.shape[1])))
+    H = np.diag(xs.dot(Q).dot(xs.T) + us.dot(R).dot(us.T))
+    return np.linalg.norm(H, ord=norm) * mult
+
+
 ## Plotting functions
 
 
@@ -168,10 +183,10 @@ def plot_image_rollouts(fig, z1, z2, ref, n_px, start, step, end, title=''):
     for i, k in enumerate(range(start, start + n_steps*step, step)):
         im = np.ones((n_px, n_px, 3))
         if z1 is not None:
-            im1 = z1[k].flatten()[1:].reshape((n_px, n_px))
+            im1 = z1[k].flatten().reshape((n_px, n_px))
             im[:,:,0] -= im1; im[:,:,1] -= im1
         if z2 is not None:
-            im2 = z2[k].flatten()[1:].reshape((n_px, n_px))
+            im2 = z2[k].flatten().reshape((n_px, n_px))
             im[:,:,1] -= im2
         im = np.maximum(np.zeros((n_px, n_px, 3)), im)
 
@@ -206,7 +221,7 @@ def plot_err_vs_norm(ax, datasets, err_model, C):
     x_err = ax.get_xlim()
     for data in datasets:
         y_err = [eps_c * x + eps_eta + data['eps_G'] for x in x_err]
-        ax.plot(x_err, y_err, '--', color=data['color'], label=data['label'])
+        ax.plot(x_err, y_err, '--', color=data['color'])
 
     ax.set_ylabel("$\| p(z) - Cx \|$");
     ax.set_xlabel('$\| x \|$');

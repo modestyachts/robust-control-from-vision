@@ -2,7 +2,8 @@ import numpy as np
 import cvxpy as cvx
 from warnings import warn
 import matplotlib.pyplot as plt
-import sls
+
+from sklearn import linear_model
 
 
 ## Training the error model
@@ -34,20 +35,20 @@ def learn_robust_perception(dataset, C, alpha, reg, norm=np.inf, verbose=False):
     # solve for optimal perception given data
     if norm == np.inf: norm = 'inf'
     assert alpha >= 0. and alpha <= 1.
-    
+
+    xds, zds = dataset
     P = cvx.Variable((C.shape[0], zds.shape[1]))
     w_c = cvx.Variable()
     w_eta = cvx.Variable()
 
-    xds, zds = dataset
     x_pred = zds * P.T
     constr = [w_c >= 0., w_eta >= 0]
-    for t in range(len(xds)):
+    for t in range(len(xds)): # constrain model to be valid on all training points
         z = cvx.norm(C.dot(xds[t]) - x_pred[t], norm) - w_c * cvx.norm(xds[t], norm) - w_eta
         constr.append(z <= 0.)
     obj = alpha * w_c  + (1-alpha) * w_eta + reg * cvx.norm(P, norm)
 
-    problem = cvx.Problem(cvx.Minimize(obj), cons)
+    problem = cvx.Problem(cvx.Minimize(obj), constr)
     problem.solve('MOSEK', verbose=verbose)
     if verbose: 
         print('problem status:', problem.status)
@@ -56,11 +57,11 @@ def learn_robust_perception(dataset, C, alpha, reg, norm=np.inf, verbose=False):
 
 
 def train_P(dataset, C, alpha, reg, robust, norm=np.inf):
-    x, z = dataset
     print("alpha: {}, reg: {}".format(alpha, reg))
     if robust:
-        P, err_tr = learn_robust_perception_weighted(z, x, C, alpha, reg, norm=norm, verbose=False)
+        P, err_tr = learn_robust_perception(dataset, C, alpha, reg, norm=norm, verbose=False)
     else: # use ridge regression
+        x, z = dataset
         ridge = linear_model.Ridge(alpha=reg)
         ridge.fit(z, x.dot(C.T))
         P = ridge.coef_
@@ -93,10 +94,10 @@ def evaluate_reg(trainset, testset, C, alpha, reg, norm=np.inf):
     # cross validation to find best regularization for learning P
     xtrain, ztrain = trainset
     xtest, ztest = testset
-    errs_tr, P, status = learn_robust_perception_weighted(ztrain, xtrain, C, alpha,
+    errs_tr, P, status = learn_robust_perception(ztrain, xtrain, C, alpha,
                                                           reg=reg, verbose=False, norm=norm)
     print("errs train: {}".format(errs_tr))
-    errs_test, _, status = learn_robust_perception_weighted(ztest, xtest, C, alpha, P=P,
+    errs_test, _, status = learn_robust_perception(ztest, xtest, C, alpha, P=P,
                                                           reg=reg, verbose=False, norm=norm)
     Pnorm = np.linalg.norm(P, ord=norm)
     print("errs test: {}, ||P||: {}".format(errs_test, Pnorm))

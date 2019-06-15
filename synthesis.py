@@ -20,7 +20,7 @@ def h2_norm_cvx(coefs):
 
 def l1_norm_cvx(coefs):
     coef_row_11_norms = sum([cvx.norm(coef, p=1, axis=1) for coef in coefs])
-    return cvx.max(coef_row_l1_norms)
+    return cvx.max(coef_row_11_norms)
 
 
 #### CONSTRAINTS ####
@@ -29,7 +29,7 @@ def realizability_constraints(sys_coefs, A, B, C):
     Phi_xx, Phi_ux, Phi_xy, Phi_uy = sys_coefs
     T = len(Phi_xx) - 2 # coefs for components 0 to T+1
     constr = [Phi_xx[0] == 0, Phi_ux[0] == 0, Phi_xy[0] == 0] # strict properness
-    constr += [Phi_xx[1] == np.eye(nx)]
+    constr += [Phi_xx[1] == np.eye(A.shape[0])]
 
     for t in range(1, T+1):
         constr += [Phi_xx[t+1] == A * Phi_xx[t] + B * Phi_ux[t],
@@ -40,7 +40,8 @@ def realizability_constraints(sys_coefs, A, B, C):
 
     # finite horizon for things that affect cost
     constr += [Phi_xx[T+1] == 0, Phi_ux[T+1] == 0, 
-               Phi_xy[T+1] == 0, Phi_uy[T+1] == 0] 
+               Phi_xy[T+1] == 0, Phi_uy[T+1] == 0]
+    return constr
 
     
 def hinf_constraint(coefs, gamma, l1_trans=False):
@@ -104,23 +105,25 @@ def synthesize_perception_controller(A, B, C, Q, R, T, norm, wx=1, wy=1,
     constr = []
     if norm.upper() == 'H2':
         out_norm = h2_norm_cvx(out_coefs)
+        
         if Phi_xy_upper is not None: # constrain L2 -> L2 (H_inf) norm of Phi_xy
             hinf_constrs, aux = hinf_constraint(Phi_xy[:-1], Phi_xy_upper)
             constr = hinf_constrs
         
     elif norm.upper() == 'L1' or norm.upper() == 'INF->INF':
         out_norm = l1_norm_cvx(out_coefs)
+        
         if Phi_xy_upper is not None: # constrain L_inf -> L_inf (L1) norm of Phi_xy
             constr = l1_constraint(Phi_xy, Phi_xy_upper)
         
     else:
         raise NotImplementedError("norm not supported")
-    
+            
     constr.extend(realizability_constraints((Phi_xx, Phi_ux, Phi_xy, Phi_uy), A, B, C))
 
     problem = cvx.Problem(cvx.Minimize(out_norm), constr)
     problem.solve(solver=solver, verbose=verbose)
-    return ([np.asarray(list(map(lambda e: e.value, X))) for X in [Rs, Ms, Ns, Ls]],
+    return ([np.asarray(list(map(lambda e: e.value, X))) for X in [Phi_xx, Phi_ux, Phi_xy, Phi_uy]],
             (out_norm.value, problem.status))
 
 
